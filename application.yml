@@ -1,0 +1,17 @@
+server:
+port: 8080
+spring.datasource.driver-class-name: com.mysql.cj.jdbc.Driver
+spring.datasource.url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&serverTimezone=UTC
+spring.datasource.username: julia
+spring.datasource.password: skillbox30061991
+spring.jpa.hibernate.ddl-auto: update
+spring.jpa.hibernate.show-sql: true
+
+indexing-settings:
+  sites:
+    - url: https://ypmuseum.ru/
+      name: Музей-усадьба Л.Н.Толстого
+    - url: https://usadba-nadonu.ru/
+      name: Усадьба Скорняково-Архангельское
+    - url:  https://tzar.ru/
+      name: Музей-заповедник Царское село

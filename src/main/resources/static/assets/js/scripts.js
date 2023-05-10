@@ -478,7 +478,7 @@ $.fn.ajaxSubmit = function(options) {
         function getDoc(frame) {
             /* it looks like contentWindow or contentDocument do not
              * carry the protocol property in ie8, when running under ssl
-             * frame.document is the only valid response document, since
+             * frame.document is the only valid searchengine.response document, since
              * the protocol is know but not on the other two objects. strange?
              * "Same origin policy" http://en.wikipedia.org/wiki/Same_origin_policy
              */
@@ -627,7 +627,7 @@ $.fn.ajaxSubmit = function(options) {
             
             doc = getDoc(io);
             if(!doc) {
-                log('cannot access response document');
+                log('cannot access searchengine.response document');
                 e = SERVER_ABORT;
             }
             if (e === CLIENT_TIMEOUT_ABORT && xhr) {
@@ -642,7 +642,7 @@ $.fn.ajaxSubmit = function(options) {
             }
 
             if (!doc || doc.location.href == s.iframeSrc) {
-                // response not received yet
+                // searchengine.response not received yet
                 if (!timedOut)
                     return;
             }
@@ -667,12 +667,12 @@ $.fn.ajaxSubmit = function(options) {
                         setTimeout(cb, 250);
                         return;
                     }
-                    // let this fall through because server response could be an empty document
+                    // let this fall through because server searchengine.response could be an empty document
                     //log('Could not access iframe DOM after mutiple tries.');
                     //throw 'DOMException: not available';
                 }
 
-                //log('response detected');
+                //log('searchengine.response detected');
                 var docRoot = doc.body ? doc.body : doc.documentElement;
                 xhr.responseText = docRoot ? docRoot.innerHTML : null;
                 xhr.responseXML = doc.XMLDocument ? doc.XMLDocument : doc;
@@ -691,7 +691,7 @@ $.fn.ajaxSubmit = function(options) {
                 var dt = (s.dataType || '').toLowerCase();
                 var scr = /(json|script|text)/.test(dt);
                 if (scr || s.textarea) {
-                    // see if user embedded response in textarea
+                    // see if user embedded searchengine.response in textarea
                     var ta = doc.getElementsByTagName('textarea')[0];
                     if (ta) {
                         xhr.responseText = ta.value;
@@ -700,7 +700,7 @@ $.fn.ajaxSubmit = function(options) {
                         xhr.statusText = ta.getAttribute('statusText') || xhr.statusText;
                     }
                     else if (scr) {
-                        // account for browsers injecting pre around json response
+                        // account for browsers injecting pre around json searchengine.response
                         var pre = doc.getElementsByTagName('pre')[0];
                         var b = doc.getElementsByTagName('body')[0];
                         if (pre) {
