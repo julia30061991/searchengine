@@ -1,7 +1,6 @@
 package searchengine.services;
 
 import searchengine.model.Page;
-
 import java.util.List;
 import java.util.Map;
 
@@ -10,7 +9,7 @@ public interface SearchingService {
 
     void sortWords(Map<String, Integer> words);
 
-    void searchInfo(String query);
+    void searchInfo(String query, String site, int offset, int limit);
 
     List<Page> getSortedPages();
 }

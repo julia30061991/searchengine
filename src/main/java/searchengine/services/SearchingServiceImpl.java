@@ -1,6 +1,7 @@
 package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.log4j.Log4j2;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,12 +19,14 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Log4j2
 public class SearchingServiceImpl implements SearchingService {
     private Map<String, Integer> wordsMap = new TreeMap<>();
     private Set<String> lemmasQuery = new HashSet<>();
     private TreeMap<String, Integer> sortedMap = new TreeMap<>();
     private List<Lemma> allLemmasList = new ArrayList<>();
     private int countResult = 0;
+    private List<Index> indexes = new ArrayList<>();
 
     @Autowired
     private final LemmaRepository lemmaRepository;
@@ -49,7 +52,12 @@ public class SearchingServiceImpl implements SearchingService {
     }
 
     @Override
-    public void searchInfo(String query) { //TODO: написать поиск по одному сайту, сейчас ищет по всем
+    public void searchInfo(String query, String site, int offset, int limit) {
+        sortWords(getLemmasWithFrequency(query));
+        countResult = getSortedPages().size();
+    }
+
+    private Map<String, Integer> getLemmasWithFrequency(String query) {
         Map<String, Integer> mapLemmas = new HashMap<>();
         getLemmasFromQuery(query);
         for (String str : lemmasQuery) {
@@ -63,15 +71,12 @@ public class SearchingServiceImpl implements SearchingService {
             }
             mapLemmas.putIfAbsent(lemm, lemma.getFrequency());
         }
-        sortWords(mapLemmas);
-        getSortedPages();
-        countResult = getSortedPages().size();
-        getContentFromPage(query);
+        return mapLemmas;
     }
 
     private List<Page> getPages(String lemma, List<Lemma> allLemmasList, List<Page> pages) {
         List<Lemma> selectedLemmas = allLemmasList.stream().filter(l -> lemma.equals(l.getLemma())).collect(Collectors.toList());
-        List<Index> indexes = indexRepository.findAllByLemmaIn(selectedLemmas);
+        indexes = indexRepository.findAllByLemmaIn(selectedLemmas);
         List<Page> indexPages = indexes.stream().map(Index::getPage).collect(Collectors.toList());
         if (pages != null && !pages.isEmpty()) {
             pages.retainAll(indexPages);
@@ -83,44 +88,61 @@ public class SearchingServiceImpl implements SearchingService {
     @Override
     public List<Page> getSortedPages() {
         List<String> sortedLemmas = new ArrayList<>(sortedMap.keySet());
-        List<Page> pages = null;
+        List<Page> pages = new ArrayList<>();
         for (String sortedLemma : sortedLemmas) {
             pages = getPages(sortedLemma, allLemmasList, pages);
         }
         return pages;
     }
 
-    public SearchedDataResponse getContentFromPage(String query) { //TODO: предусмотреть лимит и оффсет
+    public SearchedDataResponse getContentFromPage(String query, String siteUrl) {
         DetailedSearchedResult result = new DetailedSearchedResult();
         SearchedDataResponse response = new SearchedDataResponse();
-        if (getSortedPages().isEmpty()) {
+        if (calculateRelevance().isEmpty() || !lemmaRepository.existsLemmaByLemma(query)) {
             response.setResult(true);
             response.setCount(0);
+            return response;
         } else {
-            for (Page page : getSortedPages()) {
-                result.setSite(page.getSite().getUrl());
-                result.setSiteName(page.getSite().getName());
-                result.setUri(page.getPath());
-                Document doc = Jsoup.parse(page.getContent());
+            for (Map.Entry<Page, Float> entry : calculateRelevance().entrySet()) {
+                Page res = entry.getKey();
+                Document doc = Jsoup.parse(res.getContent());
                 String title = doc.title();
-                result.setTitle(title);
-                result.setSnippet(buildSnippet(page, query).toString());
-                result.setRelevance(0.09898f); //TODO: изменить метод для отображения страниц по релевантности
-                List<DetailedSearchedResult> resultList = new ArrayList<>();
-                resultList.add(result);
-                response.setResult(true);
-                response.setCount(countResult);
-                response.setData(resultList);
+                String snippet = buildSnippet(entry.getKey(), query).toString();
+                float relevance = entry.getValue();
+                if (siteUrl == null) {
+                    buildResponse(res.getSite().getUrl(), res.getSite().getName(), res.getPath(), title, snippet,
+                            relevance, result, response);
+                } else {
+                    if (res.getSite().getUrl().equals(siteUrl)) {
+                        buildResponse(res.getSite().getUrl(), res.getSite().getName(), res.getPath(), title, snippet,
+                                relevance, result, response);
+                    }
+                }
             }
         }
         return response;
     }
 
-    private Hashtable<Page, Float> calculateRelevance(List<Page> pageList, List<Index> indexList) {
+    private void buildResponse(String siteUrl, String siteName, String uri, String title, String snippet,
+                               float relevance, DetailedSearchedResult result, SearchedDataResponse response) {
+        result.setSite(siteUrl);
+        result.setSiteName(siteName);
+        result.setUri(uri);
+        result.setTitle(title);
+        result.setSnippet(snippet);
+        result.setRelevance(relevance);
+        List<DetailedSearchedResult> resultList = new ArrayList<>();
+        resultList.add(result);
+        response.setResult(true);
+        response.setCount(countResult);
+        response.setData(resultList);
+    }
+
+    private Hashtable<Page, Float> calculateRelevance() {
         HashMap<Page, Float> pagesRelevance = new HashMap<>();
-        for (Page page : pageList) {
+        for (Page page : getSortedPages()) {
             float relevanceOfPage = 0;
-            for (Index index : indexList) {
+            for (Index index : indexes) {
                 if (index.getPage() == page) {
                     relevanceOfPage += index.getRank();
                 }
@@ -172,3 +194,4 @@ public class SearchingServiceImpl implements SearchingService {
         }
     }
 }
+//максимальное кол-во строк в методе - 23

@@ -33,9 +33,9 @@ public class ApiController {
     @GetMapping("/startIndexing")
     public ResponseEntity<DataResponse> startIndexing() {
         if (!indexingServiceImpl.isIndexing()) {
-            DataResponse dataResponse = new DataResponse(true);
             indexingServiceImpl.clearRepositories();
             indexingServiceImpl.startIndexing();
+            DataResponse dataResponse = new DataResponse(true);
             return ResponseEntity.status(200).body(dataResponse);
         } else {
             DataResponse dataResponse = new DataResponse(false, "Индексация уже запущена");
@@ -46,7 +46,7 @@ public class ApiController {
     @GetMapping("/stopIndexing")
     public ResponseEntity<DataResponse> stopIndexing() {
         if (indexingServiceImpl.isIndexing()) {
-            DataResponse dataResponse = new DataResponse(true);
+            DataResponse dataResponse = new DataResponse(true, "Индексация остановлена пользователем");
             indexingServiceImpl.stopIndexing();
             return ResponseEntity.status(200).body(dataResponse);
         } else {
@@ -78,8 +78,8 @@ public class ApiController {
             dataResponse.setError("Задан пустой поисковый запрос");
             return ResponseEntity.status(400).body(dataResponse);
         } else {
-            searchingServiceImpl.searchInfo(query);
-            SearchedDataResponse dataResponse = searchingServiceImpl.getContentFromPage(query);
+            searchingServiceImpl.searchInfo(query, site, offset, limit);
+            SearchedDataResponse dataResponse = searchingServiceImpl.getContentFromPage(query, site);
             return ResponseEntity.status(200).body(dataResponse);
         }
     }

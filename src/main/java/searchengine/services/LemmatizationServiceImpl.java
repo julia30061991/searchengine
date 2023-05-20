@@ -1,6 +1,7 @@
 package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.log4j.Log4j2;
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.springframework.stereotype.Service;
@@ -18,13 +19,14 @@ import java.util.TreeMap;
 
 @Service
 @RequiredArgsConstructor
+@Log4j2
 public class LemmatizationServiceImpl implements LemmatizationService {
     private final String[] particlesNames = new String[]{"МЕЖД", "ПРЕДЛ", "СОЮЗ"};
     private Map<String, Integer> collectionLemmas = new TreeMap<>();
 
     public Map<String, Integer> getLemmasFromText(String text) throws IOException {
         if (text.isEmpty()) {
-            System.out.println("Текст отсутствует");
+            log.warn("Текст отсутствует");
         }
         String[] words = text.toLowerCase().trim().replaceAll("([^а-я])", " ").split(" ");
         LuceneMorphology luceneMorphology = new RussianLuceneMorphology();
@@ -71,8 +73,11 @@ public class LemmatizationServiceImpl implements LemmatizationService {
     public void indexingPageAndGetLemmas(Page page, Site site, LemmaRepository lemmaRep, IndexRepository indexRep) throws Exception {
         String textFromPage = getTextWithoutTegs(page.getContent());
         collectionLemmas = getLemmasFromText(textFromPage);
+        Lemma lemma;
         for (Map.Entry<String, Integer> entry : collectionLemmas.entrySet()) {
-            Lemma lemma = lemmaRep.findLemmaByLemmaAndSite(entry.getKey(), site);
+            synchronized (lemmaRep) {
+                lemma = lemmaRep.findLemmaByLemmaAndSite(entry.getKey(), site);
+            }
             if (lemma == null) {
                 lemma = new Lemma();
                 lemma.setLemma(entry.getKey());
@@ -81,6 +86,7 @@ public class LemmatizationServiceImpl implements LemmatizationService {
             } else {
                 lemma.setFrequency(lemma.getFrequency() + 1);
             }
+
             lemmaRep.save(lemma);
             Index index = new Index();
             index.setLemma(lemma);
@@ -91,3 +97,4 @@ public class LemmatizationServiceImpl implements LemmatizationService {
         collectionLemmas.clear();
     }
 }
+//максимальное кол-во строк в методе - 22

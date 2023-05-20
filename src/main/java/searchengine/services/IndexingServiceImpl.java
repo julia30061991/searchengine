@@ -1,6 +1,7 @@
 package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.log4j.Log4j2;
 import org.jsoup.Connection;
 import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
@@ -27,6 +28,7 @@ import java.util.concurrent.*;
 
 @Service
 @RequiredArgsConstructor
+@Log4j2
 public class IndexingServiceImpl implements IndexingService {
     private Site site;
     private String lastError = null;
@@ -59,12 +61,11 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     public boolean isValidLink(String link) {
         link = link.toLowerCase();
-        return link.contains(".jpg") || link.contains(".jpeg") || link.contains(".png") || link.contains(".gif")
-                || link.contains(".webp") || link.contains(".pdf") || link.contains(".eps") || link.contains(".xlsx")
-                || link.contains(".doc") || link.contains(".pptx") || link.contains(".docx") || link.contains("?_ga")
-                || link.contains("#") || link.contains("?") || link.contains(".zip") || link.contains(".mp4")
-                || link.contains(".wma") || link.contains(".ppt") || link.contains("/pdf") || link.contains("@mail.ru")
-                || link.contains("@yandex.ru") || link.contains("@bk.ru");
+        String REGEX_URL = "^(?:.*(?=(jpg|lang=en|lang=ru|jpeg|png|gif|webp|pdf|eps|xlsx|doc|pptx|docx|zip|mp4|wma|ppt|ru)$))?[^.]*$";
+        return !link.matches(REGEX_URL)
+                && !link.contains("#")
+                && !link.contains("?")
+                && link.startsWith(parentLink);
     }
 
     @Override
@@ -75,41 +76,42 @@ public class IndexingServiceImpl implements IndexingService {
                 site = new Site(lastError, siteConfig.getName(), Status.INDEXING, LocalDateTime.now(), siteConfig.getUrl());
                 siteRep.save(site);
                 parentLink = site.getUrl();
-                System.out.println("Запускаю индексацию сайта " + site.getName());
+                log.info("Запускаю индексацию сайта " + site.getName());
                 try {
                     RecursiveIndexingUrl recursiveIndexing = new RecursiveIndexingUrl(site.getUrl(), site);
                     forkJoinPool = new ForkJoinPool();
                     forkJoinPool.invoke(recursiveIndexing);
-                    System.out.println("Индексация cайта " + site.getName() + " завершена");
                     site.setStatusTime(LocalDateTime.now());
                     site.setStatus(Status.INDEXED);
                     siteRep.save(site);
+                    log.info("Индексация cайта " + site.getName() + " завершена");
                 } catch (Exception ex) {
-                    System.out.println("Неизвестная ошибка подключения к сайту " + site.getName());
-                    System.out.println("Индексация cайта " + site.getName() + " будет завершена с ошибкой");
+                    log.error("Неизвестная ошибка подключения к сайту " + site.getName());
+                    log.warn("Индексация cайта " + site.getName() + " будет завершена с ошибкой");
                     ex.printStackTrace();
                     lastError = ex.getMessage();
                     site.setStatus(Status.FAILED);
                     siteRep.save(site);
                 }
             } else {
-                System.out.println("Индексация сайта " + siteConfig.getName() + " была остановлена");
+                log.info("Индексация сайта " + siteConfig.getName() + " была остановлена");
             }
         }
     }
 
     @Override
-    public void stopIndexing() { //TODO: не меняется кнопка start на stop на фронте, в постмене отрабатывает нормально
+    public void stopIndexing() {
         if (siteRep.existsByStatus(Status.INDEXING)) {
             setIndexing(false);
             forkJoinPool.shutdownNow();
             allTasks.clear();
-            System.out.println("Индексация сайта остановлена");
+            log.info("Индексация сайта остановлена");
             site.setStatus(Status.FAILED);
             site.setStatusTime(LocalDateTime.now());
+            site.setLastError("Индексация остановлена пользователем");
             siteRep.save(site);
         } else {
-            System.out.println("Индексация не запущена или уже завершена");
+            log.info("Индексация не запущена или уже завершена");
         }
     }
 
@@ -127,24 +129,22 @@ public class IndexingServiceImpl implements IndexingService {
         @Override
         public void compute() {
             synchronized (indexedLinks.getIndexedLinks()) {
-                if (!isValidLink(url) && !indexedLinks.getIndexedLinks().contains(url) && url.startsWith(parentLink)) {
+                if (isValidLink(url) && !indexedLinks.getIndexedLinks().contains(url) && isIndexing) {
                     try {
-                        Thread.sleep(2000);
-                        System.out.println("Запускаю индексацию страницы " + url);
-                        indexingPage(url, site);
-                        Document document = Jsoup.connect(url).ignoreContentType(true).timeout(2000).get();
+                        Thread.sleep(3000);
+                        log.info("Запускаю индексацию страницы " + url);
+                        Document document = indexingPage(url, site);
                         Elements linkParse = document.select("a");
                         for (Element element : linkParse) {
                             String childUrl = element.absUrl("href");
-                            RecursiveIndexingUrl recursiveIndexingUrl = new RecursiveIndexingUrl(childUrl, site);
-                            recursiveIndexingUrl.fork();
-                            allTasks.add(recursiveIndexingUrl);
+                            if (isValidLink(childUrl) && !indexedLinks.getIndexedLinks().contains(childUrl) && isIndexing) {
+                                RecursiveIndexingUrl recursiveIndexingUrl = new RecursiveIndexingUrl(childUrl, site);
+                                recursiveIndexingUrl.fork();
+                                allTasks.add(recursiveIndexingUrl);
+                            }
                         }
-                    } catch (HttpStatusException ex) {
-                        System.out.println("Ошибка HTTP-статуса страницы " + url);
-                        pageStatus(page, site, ex.getStatusCode());
                     } catch (Exception e) {
-                        System.out.println("Неизвестная ошибка обработки страницы " + url);
+                        log.error("Неизвестная ошибка обработки страницы " + url);
                         lastError = e.getMessage();
                     }
                 }
@@ -156,33 +156,36 @@ public class IndexingServiceImpl implements IndexingService {
             }
         }
 
-        public void indexingPage(String url, Site site) {
+        private Document indexingPage(String url, Site site) {
+            Document document = new Document("");
             try {
-                Thread.sleep(2000);
-                Connection.Response response = Jsoup.connect(url).followRedirects(false).timeout(1500).execute();
-                statusCode = response.statusCode();
-                Document document = Jsoup.connect(url).ignoreContentType(true).timeout(1500).get();
-                if (document != null & isIndexing) {
-                    URL link = new URL(url);
-                    String subLink = link.getPath();
-                    page = new Page(statusCode, document.html(), subLink, site);
-                    pageStatus(page, site, statusCode);
-                    site.setStatusTime(LocalDateTime.now());
-                    synchronized (pageRep) {
-                        if (!pageRep.existsPageByPathAndAndSite(page.getPath(), site)) {
-                            pageRep.save(page);
-                            siteRep.save(site);
-                        }
-                    }
-                    indexedLinks.getIndexedLinks().add(url);
-                    LemmatizationServiceImpl lemmaService = new LemmatizationServiceImpl();
-                    synchronized (lemmaRep) {
-                        lemmaService.indexingPageAndGetLemmas(page, site, lemmaRep, indexRep);
+                Connection connection = Jsoup.connect(url);
+                document = connection.ignoreContentType(true).timeout(3000).get();
+                statusCode = connection.followRedirects(false).execute().statusCode();
+                if (document == null) {
+                    throw new HttpStatusException("Подключение отсутствует", 404, url);
+                }
+                URL link = new URL(url);
+                String subLink = link.getPath();
+                page = new Page(statusCode, document.html(), subLink, site);
+                pageStatus(page, site, statusCode);
+                site.setStatusTime(LocalDateTime.now());
+                synchronized (pageRep) {
+                    if (!pageRep.existsPageByPathAndAndSite(page.getPath(), site)) {
+                        pageRep.save(page);
+                        siteRep.save(site);
                     }
                 }
+                indexedLinks.getIndexedLinks().add(url);
+                LemmatizationServiceImpl lemmaService = new LemmatizationServiceImpl();
+                lemmaService.indexingPageAndGetLemmas(page, site, lemmaRep, indexRep);
+            } catch (HttpStatusException ex) {
+                log.error("Ошибка HTTP-статуса страницы " + url);
+                pageStatus(page, site, ex.getStatusCode());
             } catch (Exception e) {
                 e.printStackTrace();
             }
+            return document;
         }
     }
 
@@ -202,24 +205,9 @@ public class IndexingServiceImpl implements IndexingService {
                 site.setLastError("Cтраница временно недоступна по данному адресу");
                 siteRep.save(site);
                 break;
-            case 404:
-                page.setCode(code);
-                site.setLastError("Cтраница не найдена");
-                siteRep.save(site);
-                break;
-            case 500:
-                page.setCode(code);
-                site.setLastError("Ошибка на стороне сервера");
-                siteRep.save(site);
-                break;
             case 400:
                 page.setCode(code);
                 site.setLastError("Некорректный запрос");
-                siteRep.save(site);
-                break;
-            case 403:
-                page.setCode(code);
-                site.setLastError("Доступ к ресурсу ограничен");
                 siteRep.save(site);
                 break;
             case 401:
@@ -227,14 +215,28 @@ public class IndexingServiceImpl implements IndexingService {
                 site.setLastError("Требуется аутентифиация");
                 siteRep.save(site);
                 break;
+            case 403:
+                page.setCode(code);
+                site.setLastError("Доступ к ресурсу ограничен");
+                siteRep.save(site);
+                break;
+            case 404:
+                page.setCode(code);
+                site.setLastError("Cтраница не найдена");
+                siteRep.save(site);
+                break;
             case 405:
                 page.setCode(code);
                 site.setLastError("Метод нельзя применить к текущему ресурсу");
                 siteRep.save(site);
                 break;
-            case 408:
+            case 500:
                 page.setCode(code);
-                site.setLastError("Время ожидания сервером передачи от клиента истекло");
+                site.setLastError("Ошибка на стороне сервера");
+                siteRep.save(site);
+                break;
+            default:
+                site.setLastError("Неизвестная ошибка при индексации");
                 siteRep.save(site);
                 break;
         }
@@ -254,25 +256,27 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     public void updateOnePage(String url) {
         if (url == null) {
-            System.out.println("Передана пустая ссылка");
+            log.warn("Передана пустая ссылка");
             return;
         }
         try {
             URL link = new URL(url);
             String subLink = link.getPath();
             if (pageRep.existsPageByPath(subLink)) {
-                System.out.println("Страница имеется в базе, начинаю обновление");
+                log.info("Страница имеется в базе, начинаю обновление");
                 String siteUrl = "https://" + link.getHost() + "/";
                 site = siteRep.findSiteByUrl(siteUrl);
                 pageRep.flush();
                 pageRep.delete(pageRep.findPageByPath(subLink));
+                setIndexing(true);
                 RecursiveIndexingUrl task = new RecursiveIndexingUrl(url, site);
                 task.indexingPage(url, site);
             } else {
-                System.out.println("Страницы нет в базе, добавляю");
+                log.info("Страницы нет в базе, добавляю");
                 String siteUrl = "https://" + link.getHost() + "/";
                 site = siteRep.findSiteByUrl(siteUrl);
                 pageRep.flush();
+                setIndexing(true);
                 RecursiveIndexingUrl task = new RecursiveIndexingUrl(url, site);
                 task.indexingPage(url, site);
             }
@@ -289,3 +293,5 @@ public class IndexingServiceImpl implements IndexingService {
         lemmaRep.deleteAll();
     }
 }
+//максимальное кол-во строк кода в методе - 28 (до закрывающей скобки)
+//самый длинный - pageStatus со switch - 45 строк (возможно сократить при переходе на джаву 12 - уточнить)
