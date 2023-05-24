@@ -9,7 +9,7 @@ public interface SearchingService {
 
     void sortWords(Map<String, Integer> words);
 
-    void searchInfo(String query, String site, int offset, int limit);
+    void searchInfo(String query, String site);
 
     List<Page> getSortedPages();
 }

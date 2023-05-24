@@ -78,8 +78,8 @@ public class ApiController {
             dataResponse.setError("Задан пустой поисковый запрос");
             return ResponseEntity.status(400).body(dataResponse);
         } else {
-            searchingServiceImpl.searchInfo(query, site, offset, limit);
-            SearchedDataResponse dataResponse = searchingServiceImpl.getContentFromPage(query, site);
+            searchingServiceImpl.searchInfo(query, site);
+            SearchedDataResponse dataResponse = searchingServiceImpl.getResultResponse(query, site, offset, limit);
             return ResponseEntity.status(200).body(dataResponse);
         }
     }

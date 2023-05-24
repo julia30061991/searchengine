@@ -52,7 +52,7 @@ public class SearchingServiceImpl implements SearchingService {
     }
 
     @Override
-    public void searchInfo(String query, String site, int offset, int limit) {
+    public void searchInfo(String query, String site) {
         sortWords(getLemmasWithFrequency(query));
         countResult = getSortedPages().size();
     }
@@ -95,10 +95,11 @@ public class SearchingServiceImpl implements SearchingService {
         return pages;
     }
 
-    public SearchedDataResponse getContentFromPage(String query, String siteUrl) {
+    public SearchedDataResponse getResultResponse(String query, String siteUrl, int offset, int limit) {
         DetailedSearchedResult result = new DetailedSearchedResult();
+        List<DetailedSearchedResult> resList = new ArrayList<>();
         SearchedDataResponse response = new SearchedDataResponse();
-        if (calculateRelevance().isEmpty() || !lemmaRepository.existsLemmaByLemma(query)) {
+        if (calculateRelevance().isEmpty()) {
             response.setResult(true);
             response.setCount(0);
             return response;
@@ -110,21 +111,28 @@ public class SearchingServiceImpl implements SearchingService {
                 String snippet = buildSnippet(entry.getKey(), query).toString();
                 float relevance = entry.getValue();
                 if (siteUrl == null) {
-                    buildResponse(res.getSite().getUrl(), res.getSite().getName(), res.getPath(), title, snippet,
-                            relevance, result, response);
+                    resList = buildDetailedResponse(res.getSite().getUrl(), res.getSite().getName(), res.getPath(), title, snippet,
+                            relevance, result);
                 } else {
                     if (res.getSite().getUrl().equals(siteUrl)) {
-                        buildResponse(res.getSite().getUrl(), res.getSite().getName(), res.getPath(), title, snippet,
-                                relevance, result, response);
+                        resList = buildDetailedResponse(siteUrl, res.getSite().getName(), res.getPath(), title, snippet,
+                                relevance, result);
                     }
                 }
+            }
+            response.setResult(true);
+            response.setCount(countResult);
+            if(resList.size() > limit) {
+                response.setData(resList.subList(offset, offset + limit));
+            } else {
+                response.setData(resList);
             }
         }
         return response;
     }
 
-    private void buildResponse(String siteUrl, String siteName, String uri, String title, String snippet,
-                               float relevance, DetailedSearchedResult result, SearchedDataResponse response) {
+    private List<DetailedSearchedResult> buildDetailedResponse(String siteUrl, String siteName, String uri, String title, String snippet,
+                                       float relevance, DetailedSearchedResult result) {
         result.setSite(siteUrl);
         result.setSiteName(siteName);
         result.setUri(uri);
@@ -133,9 +141,7 @@ public class SearchingServiceImpl implements SearchingService {
         result.setRelevance(relevance);
         List<DetailedSearchedResult> resultList = new ArrayList<>();
         resultList.add(result);
-        response.setResult(true);
-        response.setCount(countResult);
-        response.setData(resultList);
+        return resultList;
     }
 
     private Hashtable<Page, Float> calculateRelevance() {
@@ -194,4 +200,4 @@ public class SearchingServiceImpl implements SearchingService {
         }
     }
 }
-//максимальное кол-во строк в методе - 23
+//максимальное кол-во строк в методе - 32

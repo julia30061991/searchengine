@@ -23,6 +23,7 @@ import searchengine.repositories.SiteRepository;
 
 import java.net.URL;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 
@@ -35,7 +36,6 @@ public class IndexingServiceImpl implements IndexingService {
     private boolean isIndexing = false;
     protected String parentLink = "";
     private ForkJoinPool forkJoinPool;
-    private List<RecursiveIndexingUrl> allTasks = new CopyOnWriteArrayList<>();
 
     @Autowired
     private IndexedLinks indexedLinks;
@@ -88,7 +88,6 @@ public class IndexingServiceImpl implements IndexingService {
                 } catch (Exception ex) {
                     log.error("Неизвестная ошибка подключения к сайту " + site.getName());
                     log.warn("Индексация cайта " + site.getName() + " будет завершена с ошибкой");
-                    ex.printStackTrace();
                     lastError = ex.getMessage();
                     site.setStatus(Status.FAILED);
                     siteRep.save(site);
@@ -104,8 +103,7 @@ public class IndexingServiceImpl implements IndexingService {
         if (siteRep.existsByStatus(Status.INDEXING)) {
             setIndexing(false);
             forkJoinPool.shutdownNow();
-            allTasks.clear();
-            log.info("Индексация сайта остановлена");
+            log.info("Индексация сайта остановлена пользователем");
             site.setStatus(Status.FAILED);
             site.setStatusTime(LocalDateTime.now());
             site.setLastError("Индексация остановлена пользователем");
@@ -128,6 +126,7 @@ public class IndexingServiceImpl implements IndexingService {
 
         @Override
         public void compute() {
+            List<RecursiveIndexingUrl> allTasks = new ArrayList<>();
             synchronized (indexedLinks.getIndexedLinks()) {
                 if (isValidLink(url) && !indexedLinks.getIndexedLinks().contains(url) && isIndexing) {
                     try {
@@ -144,8 +143,7 @@ public class IndexingServiceImpl implements IndexingService {
                             }
                         }
                     } catch (Exception e) {
-                        log.error("Неизвестная ошибка обработки страницы " + url);
-                        lastError = e.getMessage();
+                        log.error("Ошибка обработки страницы " + url + ", cтраница будет сохранена со статусом ошибки");
                     }
                 }
             }
@@ -181,7 +179,9 @@ public class IndexingServiceImpl implements IndexingService {
                 lemmaService.indexingPageAndGetLemmas(page, site, lemmaRep, indexRep);
             } catch (HttpStatusException ex) {
                 log.error("Ошибка HTTP-статуса страницы " + url);
+                page = new Page(ex.getStatusCode(), document.html(), url.replaceAll(site.getUrl(), "/"), site);
                 pageStatus(page, site, ex.getStatusCode());
+                pageRep.save(page);
             } catch (Exception e) {
                 e.printStackTrace();
             }
