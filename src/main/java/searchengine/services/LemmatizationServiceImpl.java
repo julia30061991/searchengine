@@ -11,7 +11,6 @@ import searchengine.model.Page;
 import searchengine.model.Site;
 import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -86,7 +85,6 @@ public class LemmatizationServiceImpl implements LemmatizationService {
             } else {
                 lemma.setFrequency(lemma.getFrequency() + 1);
             }
-
             lemmaRep.save(lemma);
             Index index = new Index();
             index.setLemma(lemma);

@@ -61,7 +61,6 @@ public class StatisticsServiceImpl implements StatisticsService {
                 countLemmas += lemmas;
             }
         }
-
         total.setPages(countPages);
         total.setLemmas(countLemmas);
 

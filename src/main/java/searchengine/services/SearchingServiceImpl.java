@@ -2,6 +2,8 @@ package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import org.apache.lucene.morphology.LuceneMorphology;
+import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -96,7 +98,6 @@ public class SearchingServiceImpl implements SearchingService {
     }
 
     public SearchedDataResponse getResultResponse(String query, String siteUrl, int offset, int limit) {
-        DetailedSearchedResult result = new DetailedSearchedResult();
         List<DetailedSearchedResult> resList = new ArrayList<>();
         SearchedDataResponse response = new SearchedDataResponse();
         if (calculateRelevance().isEmpty()) {
@@ -111,18 +112,18 @@ public class SearchingServiceImpl implements SearchingService {
                 String snippet = buildSnippet(entry.getKey(), query).toString();
                 float relevance = entry.getValue();
                 if (siteUrl == null) {
-                    resList = buildDetailedResponse(res.getSite().getUrl(), res.getSite().getName(), res.getPath(), title, snippet,
-                            relevance, result);
+                    buildDetailedResponse(res.getSite().getUrl(), res.getSite().getName(), res.getPath(), title, snippet,
+                            relevance, resList);
                 } else {
                     if (res.getSite().getUrl().equals(siteUrl)) {
-                        resList = buildDetailedResponse(siteUrl, res.getSite().getName(), res.getPath(), title, snippet,
-                                relevance, result);
+                        buildDetailedResponse(siteUrl, res.getSite().getName(), res.getPath(), title, snippet,
+                                relevance, resList);
                     }
                 }
             }
             response.setResult(true);
             response.setCount(countResult);
-            if(resList.size() > limit) {
+            if (resList.size() > limit) {
                 response.setData(resList.subList(offset, offset + limit));
             } else {
                 response.setData(resList);
@@ -131,20 +132,19 @@ public class SearchingServiceImpl implements SearchingService {
         return response;
     }
 
-    private List<DetailedSearchedResult> buildDetailedResponse(String siteUrl, String siteName, String uri, String title, String snippet,
-                                       float relevance, DetailedSearchedResult result) {
+    private void buildDetailedResponse(String siteUrl, String siteName, String uri, String title, String snippet,
+                                                               float relevance, List<DetailedSearchedResult> resultList) {
+        DetailedSearchedResult result = new DetailedSearchedResult();
         result.setSite(siteUrl);
         result.setSiteName(siteName);
         result.setUri(uri);
         result.setTitle(title);
         result.setSnippet(snippet);
         result.setRelevance(relevance);
-        List<DetailedSearchedResult> resultList = new ArrayList<>();
         resultList.add(result);
-        return resultList;
     }
 
-    private Hashtable<Page, Float> calculateRelevance() {
+    private Map<Page, Float> calculateRelevance() {
         HashMap<Page, Float> pagesRelevance = new HashMap<>();
         for (Page page : getSortedPages()) {
             float relevanceOfPage = 0;
@@ -160,8 +160,10 @@ public class SearchingServiceImpl implements SearchingService {
             float absRelevant = pagesRelevance.get(page) / Collections.max(pagesRelevance.values());
             pagesAbsRelevance.put(page, absRelevant);
         }
-        return pagesAbsRelevance.entrySet().stream().sorted(Map.Entry.comparingByValue(Comparator.reverseOrder())).
-                collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, Hashtable::new));
+        Map<Page, Float> resultPages = pagesAbsRelevance.entrySet().stream().sorted(Map.Entry.comparingByValue(Comparator.reverseOrder())).
+                collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new));
+
+        return resultPages;
     }
 
     private StringBuilder buildSnippet(Page page, String query) {
@@ -170,7 +172,7 @@ public class SearchingServiceImpl implements SearchingService {
         Document document = Jsoup.parse(page.getContent());
         String content = document.body().text();
         String[] sentences = content.split("[\\.\\!\\?]");
-        for (String word : words) {
+        for (String word : getWordsValues(content, words)) {
             for (String sentence : sentences) {
                 if (sentence.toLowerCase().contains(word.toLowerCase())) {
                     String boldWord = "<b>" + word + "</b>";
@@ -182,6 +184,39 @@ public class SearchingServiceImpl implements SearchingService {
             }
         }
         return builder;
+    }
+
+    private Set<String> getWordsValues(String content, String[] words) {
+        Map<String, String> fromText = new TreeMap<>();
+        String[] wordsFromPage = content.replaceAll("\\.\\!\\?[0-9]@,\\\\_—", " ").split(" ");
+        Map<String, String> fromText2 = new TreeMap<>();
+        try {
+            LuceneMorphology luceneMorphology = new RussianLuceneMorphology();
+            for (String word: words) {
+                List<String> resultAll = new ArrayList<>();
+                resultAll.addAll(luceneMorphology.getNormalForms(word));
+                fromText.put(resultAll.get(0), word);
+            }
+            for (String word: wordsFromPage) {
+                List<String> resultAll2 = new ArrayList<>();
+                if(word.matches("[а-я]+")) {
+                    resultAll2.addAll(luceneMorphology.getNormalForms(word.toLowerCase()));
+                    fromText2.put(resultAll2.get(0), word);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        Set<String> resValues = new HashSet<>();
+        for(String key: fromText.keySet()) {
+            for (String key2: fromText2.keySet()) {
+                if(key.equals(key2)) {
+                    resValues.add(fromText.get(key));
+                    resValues.add(fromText2.get(key));
+                }
+            }
+        }
+        return resValues;
     }
 
     class ValueComparator implements Comparator<String> {
