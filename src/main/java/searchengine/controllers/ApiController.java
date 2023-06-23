@@ -46,8 +46,8 @@ public class ApiController {
     @GetMapping("/stopIndexing")
     public ResponseEntity<DataResponse> stopIndexing() {
         if (indexingServiceImpl.isIndexing()) {
-            DataResponse dataResponse = new DataResponse(true, "Индексация остановлена пользователем");
             indexingServiceImpl.stopIndexing();
+            DataResponse dataResponse = new DataResponse(true, "Индексация остановлена пользователем");
             return ResponseEntity.status(200).body(dataResponse);
         } else {
             DataResponse dataResponse = new DataResponse(false, "Индексация не запущена");
@@ -61,8 +61,8 @@ public class ApiController {
             DataResponse dataResponse = new DataResponse(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
             return ResponseEntity.status(404).body(dataResponse);
         } else {
-            DataResponse dataResponse = new DataResponse(true);
             indexingServiceImpl.updateOnePage(url);
+            DataResponse dataResponse = new DataResponse(true);
             return ResponseEntity.status(200).body(dataResponse);
         }
     }

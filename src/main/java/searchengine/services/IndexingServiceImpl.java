@@ -262,21 +262,18 @@ public class IndexingServiceImpl implements IndexingService {
         try {
             URL link = new URL(url);
             String subLink = link.getPath();
+            String siteUrl = "https://" + link.getHost() + "/";
+            site = siteRep.findSiteByUrl(siteUrl);
+            setIndexing(true);
             if (pageRep.existsPageByPath(subLink)) {
                 log.info("Страница имеется в базе, начинаю обновление");
-                String siteUrl = "https://" + link.getHost() + "/";
-                site = siteRep.findSiteByUrl(siteUrl);
                 pageRep.flush();
                 pageRep.delete(pageRep.findPageByPath(subLink));
-                setIndexing(true);
                 RecursiveIndexingUrl task = new RecursiveIndexingUrl(url, site);
                 task.indexingPage(url, site);
             } else {
                 log.info("Страницы нет в базе, добавляю");
-                String siteUrl = "https://" + link.getHost() + "/";
-                site = siteRep.findSiteByUrl(siteUrl);
                 pageRep.flush();
-                setIndexing(true);
                 RecursiveIndexingUrl task = new RecursiveIndexingUrl(url, site);
                 task.indexingPage(url, site);
             }
@@ -293,5 +290,3 @@ public class IndexingServiceImpl implements IndexingService {
         lemmaRep.deleteAll();
     }
 }
-//максимальное кол-во строк кода в методе - 28
-//самый длинный - pageStatus со switch - 45 строк (возможно сократить при переходе на джаву 12, версию не повышала)

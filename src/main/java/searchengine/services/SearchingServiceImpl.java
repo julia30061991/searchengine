@@ -133,7 +133,7 @@ public class SearchingServiceImpl implements SearchingService {
     }
 
     private void buildDetailedResponse(String siteUrl, String siteName, String uri, String title, String snippet,
-                                                               float relevance, List<DetailedSearchedResult> resultList) {
+                                       float relevance, List<DetailedSearchedResult> resultList) {
         DetailedSearchedResult result = new DetailedSearchedResult();
         result.setSite(siteUrl);
         result.setSiteName(siteName);
@@ -192,14 +192,14 @@ public class SearchingServiceImpl implements SearchingService {
         Map<String, String> fromText2 = new TreeMap<>();
         try {
             LuceneMorphology luceneMorphology = new RussianLuceneMorphology();
-            for (String word: words) {
+            for (String word : words) {
                 List<String> resultAll = new ArrayList<>();
                 resultAll.addAll(luceneMorphology.getNormalForms(word));
                 fromText.put(resultAll.get(0), word);
             }
-            for (String word: wordsFromPage) {
+            for (String word : wordsFromPage) {
                 List<String> resultAll2 = new ArrayList<>();
-                if(word.matches("[а-я]+")) {
+                if (word.matches("[а-я]+")) {
                     resultAll2.addAll(luceneMorphology.getNormalForms(word.toLowerCase()));
                     fromText2.put(resultAll2.get(0), word);
                 }
@@ -208,9 +208,9 @@ public class SearchingServiceImpl implements SearchingService {
             e.printStackTrace();
         }
         Set<String> resValues = new HashSet<>();
-        for(String key: fromText.keySet()) {
-            for (String key2: fromText2.keySet()) {
-                if(key.equals(key2)) {
+        for (String key : fromText.keySet()) {
+            for (String key2 : fromText2.keySet()) {
+                if (key.equals(key2)) {
                     resValues.add(fromText.get(key));
                     resValues.add(fromText2.get(key));
                 }
@@ -235,4 +235,3 @@ public class SearchingServiceImpl implements SearchingService {
         }
     }
 }
-//максимальное кол-во строк в методе - 32

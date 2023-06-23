@@ -95,4 +95,3 @@ public class LemmatizationServiceImpl implements LemmatizationService {
         collectionLemmas.clear();
     }
 }
-//максимальное кол-во строк в методе - 22
